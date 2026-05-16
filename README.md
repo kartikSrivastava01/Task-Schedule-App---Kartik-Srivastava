@@ -13,9 +13,8 @@
 
 ## 🔗 Live Resources
 
-- **Live Project URL**: [Deploy Link Placeholder]
-- **GitHub Repository**: [Repository Link Placeholder]
-- **Demo Video**: [Video Link Placeholder]
+- **Live Project URL**: [https://task-schedule-app-kartik-srivastava-production.up.railway.app/]
+- **GitHub Repository**: [https://github.com/kartikSrivastava01/Task-Schedule-App---Kartik-Srivastava/edit/main/README.md]
 
 ---
 
