@@ -1,17 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import api from '../api/axios.ts';
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: 'ADMIN' | 'MEMBER';
-}
+import { User } from '../types.ts';
+import { getCurrentUser, setCurrentUser, seedInitialData } from '../utils/storage.ts';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (token: string, user: User) => void;
+  login: (user: User) => void;
   logout: () => void;
 }
 
@@ -22,28 +16,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const token = localStorage.getItem('token');
-      if (token) {
-        try {
-          const response = await api.get('/auth/me');
-          setUser(response.data.user);
-        } catch (error) {
-          localStorage.removeItem('token');
-        }
-      }
-      setLoading(false);
-    };
-    checkAuth();
+    seedInitialData();
+    const currentUser = getCurrentUser();
+    if (currentUser) {
+      setUser(currentUser);
+    }
+    setLoading(false);
   }, []);
 
-  const login = (token: string, user: User) => {
-    localStorage.setItem('token', token);
+  const login = (user: User) => {
+    setCurrentUser(user);
     setUser(user);
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
+    setCurrentUser(null);
     setUser(null);
   };
 

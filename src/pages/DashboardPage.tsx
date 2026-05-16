@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import Layout from '../layouts/Layout.tsx';
-import api from '../api/axios.ts';
+import { useAuth } from '../context/AuthContext.tsx';
+import { getProjects, getTasks, getUsers } from '../utils/storage.ts';
+import { StatCard } from '../components/StatCard.tsx';
+import { Badge } from '../components/Badge.tsx';
 import { 
   Briefcase, 
   CheckCircle2, 
@@ -25,22 +28,60 @@ interface Stats {
 }
 
 export default function DashboardPage() {
+  const { user } = useAuth();
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const response = await api.get('/dashboard/stats');
-        setStats(response.data);
-      } catch (error) {
-        console.error('Failed to fetch stats', error);
-      } finally {
-        setLoading(false);
+    const calculateStats = () => {
+      setLoading(true);
+      const allProjects = getProjects();
+      const allTasks = getTasks();
+      const allUsers = getUsers();
+
+      let filteredProjects = allProjects;
+      let filteredTasks = allTasks;
+
+      if (user?.role === 'MEMBER') {
+        filteredProjects = allProjects.filter(p => p.members.includes(user.id));
+        filteredTasks = allTasks.filter(t => t.assignedTo === user.id);
       }
+
+      const completedTasks = filteredTasks.filter(t => t.status === 'COMPLETED').length;
+      const inProgressTasks = filteredTasks.filter(t => t.status === 'IN_PROGRESS').length;
+      const pendingTasks = filteredTasks.filter(t => t.status === 'TODO').length;
+      const overdueTasks = filteredTasks.filter(t => 
+        t.status !== 'COMPLETED' && t.dueDate && new Date(t.dueDate) < new Date()
+      ).length;
+
+      const completionPercentage = filteredTasks.length > 0 
+        ? Math.round((completedTasks / filteredTasks.length) * 100) 
+        : 0;
+
+      const recentTasks = [...filteredTasks]
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 5)
+        .map(t => ({
+          ...t,
+          project: allProjects.find(p => p.id === t.projectId) || { title: 'Unknown' }
+        }));
+
+      setStats({
+        totalProjects: filteredProjects.length,
+        totalTasks: filteredTasks.length,
+        completedTasks,
+        inProgressTasks,
+        pendingTasks,
+        overdueTasks,
+        completionPercentage,
+        recentTasks,
+        membersCount: allUsers.length
+      });
+      setLoading(false);
     };
-    fetchStats();
-  }, []);
+
+    calculateStats();
+  }, [user]);
 
   if (loading) {
     return (
@@ -69,17 +110,10 @@ export default function DashboardPage() {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {statCards.map((card) => (
-            <div key={card.name} className="glass-card p-6 flex flex-col rounded-3xl hover:translate-y-[-4px] transition-all duration-300">
-              <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-3">{card.name}</p>
-              <div className="flex items-end justify-between">
-                <p className="text-3xl font-bold text-slate-900">{card.value}</p>
-                <div className={`${card.color} p-2 rounded-xl shadow-lg shadow-indigo-100`}>
-                   <card.icon className="h-5 w-5 text-white" />
-                </div>
-              </div>
-            </div>
-          ))}
+          <StatCard name="Total Projects" value={stats?.totalProjects} icon={Briefcase} color="bg-blue-500" />
+          <StatCard name="Total Tasks" value={stats?.totalTasks} icon={BarChart3} color="bg-indigo-500" />
+          <StatCard name="Completed" value={stats?.completedTasks} icon={CheckCircle2} color="bg-emerald-500" />
+          <StatCard name="Overdue" value={stats?.overdueTasks} icon={AlertCircle} color="bg-rose-500" />
         </div>
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
@@ -143,13 +177,13 @@ export default function DashboardPage() {
                           </div>
                         </td>
                         <td className="px-8 py-4">
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-widest ${
-                            task.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' :
-                            task.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-700' :
-                            'bg-amber-100 text-amber-700'
-                          }`}>
+                          <Badge variant={
+                            task.status === 'COMPLETED' ? 'emerald' :
+                            task.status === 'IN_PROGRESS' ? 'indigo' :
+                            'amber'
+                          }>
                             {task.status.replace('_', ' ')}
-                          </span>
+                          </Badge>
                         </td>
                         <td className="px-8 py-4 text-right text-[10px] font-bold text-slate-400">
                           {format(new Date(task.createdAt), 'MMM d, p')}

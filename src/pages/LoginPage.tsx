@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.tsx';
-import api from '../api/axios.ts';
-import { User, Lock, Mail, Loader2, ShieldCheck } from 'lucide-react';
+import { findUserByEmail } from '../utils/storage.ts';
+import { Lock, Mail, Loader2, ShieldCheck } from 'lucide-react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -16,15 +16,20 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    try {
-      const response = await api.post('/auth/login', { email, password });
-      login(response.data.token, response.data.user);
-      navigate('/');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to login');
-    } finally {
+    
+    // Simulate network delay
+    setTimeout(() => {
+      const user = findUserByEmail(email);
+      
+      if (user && user.password === password) {
+        const { password: _, ...userWithoutPassword } = user;
+        login(userWithoutPassword);
+        navigate('/');
+      } else {
+        setError('Invalid credentials');
+      }
       setLoading(false);
-    }
+    }, 800);
   };
 
   return (

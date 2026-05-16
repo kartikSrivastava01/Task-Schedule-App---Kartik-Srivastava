@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import Layout from '../layouts/Layout.tsx';
-import api from '../api/axios.ts';
 import { useAuth } from '../context/AuthContext.tsx';
+import { getTasks, saveTask, getProjects } from '../utils/storage.ts';
+import { TaskStatus } from '../types.ts';
+import { EmptyState } from '../components/EmptyState.tsx';
+import { Badge } from '../components/Badge.tsx';
 import { 
   CheckCircle2, 
   Clock, 
@@ -12,19 +15,8 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 
-interface Task {
-  id: string;
-  title: string;
-  description: string;
-  status: 'TODO' | 'IN_PROGRESS' | 'COMPLETED';
-  priority: 'LOW' | 'MEDIUM' | 'HIGH';
-  dueDate: string;
-  project: { title: string };
-  assignedTo: { name: string };
-}
-
 export default function TasksPage() {
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
@@ -32,25 +24,37 @@ export default function TasksPage() {
 
   useEffect(() => {
     fetchTasks();
-  }, []);
+  }, [user]);
 
-  const fetchTasks = async () => {
-    try {
-      const response = await api.get('/tasks');
-      setTasks(response.data);
-    } catch (error) {
-      console.error('Failed to fetch tasks', error);
-    } finally {
-      setLoading(false);
+  const fetchTasks = () => {
+    setLoading(true);
+    const allTasks = getTasks();
+    const allProjects = getProjects();
+
+    let filtered = allTasks;
+    if (user?.role === 'MEMBER') {
+      filtered = allTasks.filter(t => t.assignedTo === user.id);
     }
+
+    const enhancedTasks = filtered.map(t => ({
+      ...t,
+      project: allProjects.find(p => p.id === t.projectId) || { title: 'Unknown' }
+    }));
+
+    setTasks(enhancedTasks);
+    setLoading(false);
   };
 
-  const updateStatus = async (taskId: string, status: string) => {
-    try {
-      await api.patch(`/tasks/${taskId}/status`, { status });
+  const updateStatus = (taskId: string, status: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (task) {
+      const updatedTask = {
+        ...task,
+        status: status as TaskStatus,
+        updatedAt: new Date().toISOString()
+      };
+      saveTask(updatedTask);
       fetchTasks();
-    } catch (error) {
-      console.error('Failed to update task', error);
     }
   };
 
@@ -151,13 +155,13 @@ export default function TasksPage() {
                         </span>
                       </td>
                       <td className="px-8 py-6">
-                        <span className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border ${
-                          task.priority === 'HIGH' ? 'bg-rose-500/10 text-rose-600 border-rose-500/20' :
-                          task.priority === 'MEDIUM' ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' :
-                          'bg-indigo-500/10 text-indigo-600 border-indigo-500/20'
-                        }`}>
+                        <Badge variant={
+                          task.priority === 'HIGH' ? 'rose' :
+                          task.priority === 'MEDIUM' ? 'amber' :
+                          'indigo'
+                        }>
                           {task.priority}
-                        </span>
+                        </Badge>
                       </td>
                       <td className="px-8 py-6">
                         {task.dueDate ? (
@@ -190,11 +194,8 @@ export default function TasksPage() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="px-8 py-24 text-center">
-                       <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <CheckSquare className="w-6 h-6 text-slate-300" />
-                       </div>
-                       <p className="text-slate-400 font-bold text-sm tracking-tight italic">Peripheral scan complete. No signals detected.</p>
+                    <td colSpan={5} className="px-8 py-12">
+                       <EmptyState message="Peripheral scan complete. No signals detected." icon={CheckSquare} />
                     </td>
                   </tr>
                 )}

@@ -8,7 +8,8 @@ import {
   LogOut, 
   User as UserIcon,
   Menu,
-  X
+  X,
+  Users
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -31,7 +32,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
     { name: 'Projects', path: '/projects', icon: Briefcase },
     { name: 'Tasks', path: '/tasks', icon: CheckSquare },
+    { name: 'Profile', path: '/profile', icon: UserIcon },
   ];
+
+  if (user?.role === 'ADMIN') {
+    navItems.push({ name: 'Team', path: '/users', icon: Users });
+  }
 
   return (
     <div className="min-h-screen flex">

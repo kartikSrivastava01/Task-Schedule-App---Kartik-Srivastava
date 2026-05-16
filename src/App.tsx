@@ -9,19 +9,30 @@ import DashboardPage from './pages/DashboardPage.tsx';
 import ProjectsPage from './pages/ProjectsPage.tsx';
 import ProjectDetailPage from './pages/ProjectDetailPage.tsx';
 import TasksPage from './pages/TasksPage.tsx';
+import UsersPage from './pages/UsersPage.tsx';
+import ProfilePage from './pages/ProfilePage.tsx';
 
-const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
   
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
       </div>
     );
   }
   
   if (!user) return <Navigate to="/login" />;
+  return <>{children}</>;
+};
+
+const RoleRoute = ({ children, role }: { children: React.ReactNode, role: 'ADMIN' | 'MEMBER' }) => {
+  const { user, loading } = useAuth();
+  
+  if (loading) return null;
+  if (user?.role !== role) return <Navigate to="/" />;
+  
   return <>{children}</>;
 };
 
@@ -35,24 +46,36 @@ export default function App() {
 
         {/* Protected Routes */}
         <Route path="/" element={
-          <PrivateRoute>
+          <ProtectedRoute>
             <DashboardPage />
-          </PrivateRoute>
+          </ProtectedRoute>
         } />
         <Route path="/projects" element={
-          <PrivateRoute>
+          <ProtectedRoute>
             <ProjectsPage />
-          </PrivateRoute>
+          </ProtectedRoute>
         } />
         <Route path="/projects/:id" element={
-          <PrivateRoute>
+          <ProtectedRoute>
             <ProjectDetailPage />
-          </PrivateRoute>
+          </ProtectedRoute>
         } />
         <Route path="/tasks" element={
-          <PrivateRoute>
+          <ProtectedRoute>
             <TasksPage />
-          </PrivateRoute>
+          </ProtectedRoute>
+        } />
+        <Route path="/users" element={
+          <ProtectedRoute>
+            <RoleRoute role="ADMIN">
+              <UsersPage />
+            </RoleRoute>
+          </ProtectedRoute>
+        } />
+        <Route path="/profile" element={
+          <ProtectedRoute>
+            <ProfilePage />
+          </ProtectedRoute>
         } />
 
         {/* Fallback */}

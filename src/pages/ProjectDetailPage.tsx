@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import Layout from '../layouts/Layout.tsx';
-import api from '../api/axios.ts';
 import { useAuth } from '../context/AuthContext.tsx';
+import { getProjectById, saveProject, getTasks, saveTask, deleteTask as storageDeleteTask, getUsers, generateId } from '../utils/storage.ts';
+import { Task, Project, TaskStatus, TaskPriority } from '../types.ts';
 import { 
   Plus, 
   ArrowLeft, 
@@ -15,38 +16,14 @@ import {
   Trash2,
   Settings,
   UserPlus,
-  Filter
+  Filter,
+  X
 } from 'lucide-react';
 import { format } from 'date-fns';
 
-interface Task {
-  id: string;
-  title: string;
-  description: string;
-  status: 'TODO' | 'IN_PROGRESS' | 'COMPLETED';
-  priority: 'LOW' | 'MEDIUM' | 'HIGH';
-  dueDate: string;
-  assignedTo: { id: string; name: string };
-}
-
-interface Member {
-  userId: string;
-  user: { id: string; name: string; email: string };
-}
-
-interface Project {
-  id: string;
-  title: string;
-  description: string;
-  createdAt: string;
-  members: Member[];
-  tasks: Task[];
-  creator: { name: string };
-}
-
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [project, setProject] = useState<Project | null>(null);
+  const [project, setProject] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showMemberModal, setShowMemberModal] = useState(false);
@@ -57,8 +34,8 @@ export default function ProjectDetailPage() {
   const [newTask, setNewTask] = useState({
     title: '',
     description: '',
-    priority: 'MEDIUM',
-    status: 'TODO',
+    priority: 'MEDIUM' as TaskPriority,
+    status: 'TODO' as TaskStatus,
     dueDate: '',
     assignedToId: '',
   });
@@ -68,82 +45,124 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     fetchProject();
     if (currentUser?.role === 'ADMIN') {
-      fetchUsers();
+      setAllUsers(getUsers());
     }
   }, [id]);
 
-  const fetchProject = async () => {
-    try {
-      const response = await api.get(`/projects/${id}`);
-      setProject(response.data);
-    } catch (error) {
-      console.error('Failed to fetch project', error);
+  const fetchProject = () => {
+    setLoading(true);
+    if (!id) return;
+    const targetProject = getProjectById(id);
+    if (!targetProject) {
       navigate('/projects');
-    } finally {
-      setLoading(false);
+      return;
     }
+
+    const allTasks = getTasks().filter(t => t.projectId === id);
+    const allRegisteredUsers = getUsers();
+
+    const enhancedProject = {
+      ...targetProject,
+      tasks: allTasks.map(t => ({
+        ...t,
+        assignedTo: allRegisteredUsers.find(u => u.id === t.assignedTo) || { id: '', name: 'Unassigned' }
+      })),
+      members: targetProject.members.map(mid => ({
+        userId: mid,
+        user: allRegisteredUsers.find(u => u.id === mid) || { id: mid, name: 'Unknown', email: '' }
+      })),
+      creator: allRegisteredUsers.find(u => u.id === targetProject.createdBy) || { name: 'System' }
+    };
+
+    setProject(enhancedProject);
+    setLoading(false);
   };
 
-  const fetchUsers = async () => {
-    try {
-      const response = await api.get('/users');
-      setAllUsers(response.data);
-    } catch (error) {
-      console.error('Failed to fetch users', error);
-    }
-  };
-
-  const handleCreateTask = async (e: React.FormEvent) => {
+  const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      await api.post('/tasks', { ...newTask, projectId: id });
-      setShowTaskModal(false);
-      setNewTask({ title: '', description: '', priority: 'MEDIUM', status: 'TODO', dueDate: '', assignedToId: '' });
-      fetchProject();
-    } catch (error) {
-      console.error('Failed to create task', error);
-    }
+    if (!id || !currentUser) return;
+
+    const task: Task = {
+      id: generateId(),
+      title: newTask.title,
+      description: newTask.description,
+      priority: newTask.priority,
+      status: newTask.status,
+      dueDate: newTask.dueDate,
+      projectId: id,
+      assignedTo: newTask.assignedToId,
+      createdBy: currentUser.id,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    saveTask(task);
+    setShowTaskModal(false);
+    setNewTask({ title: '', description: '', priority: 'MEDIUM', status: 'TODO', dueDate: '', assignedToId: '' });
+    fetchProject();
   };
 
-  const handleAddMember = async (e: React.FormEvent) => {
+  const handleAddMember = (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      await api.post(`/projects/${id}/members`, { userId: selectedUserForProject });
-      setShowMemberModal(false);
-      setSelectedUserForProject('');
-      fetchProject();
-    } catch (error) {
-      console.error('Failed to add member', error);
-    }
+    if (!project || !id) return;
+
+    const updatedMembers = [...project.members.map((m: any) => m.userId), selectedUserForProject];
+    const updatedProject: Project = {
+      id: project.id,
+      title: project.title,
+      description: project.description,
+      createdBy: project.createdBy,
+      members: updatedMembers,
+      createdAt: project.createdAt,
+      updatedAt: new Date().toISOString(),
+    };
+
+    saveProject(updatedProject);
+    setShowMemberModal(false);
+    setSelectedUserForProject('');
+    fetchProject();
   };
 
-  const handleRemoveMember = async (userId: string) => {
+  const handleRemoveMember = (userId: string) => {
     if (!window.confirm('Are you sure you want to remove this member?')) return;
-    try {
-      await api.delete(`/projects/${id}/members/${userId}`);
+    if (!project || !id) return;
+
+    const updatedMembers = project.members
+      .map((m: any) => m.userId)
+      .filter((mid: string) => mid !== userId);
+    
+    const updatedProject: Project = {
+      id: project.id,
+      title: project.title,
+      description: project.description,
+      createdBy: project.createdBy,
+      members: updatedMembers,
+      createdAt: project.createdAt,
+      updatedAt: new Date().toISOString(),
+    };
+
+    saveProject(updatedProject);
+    fetchProject();
+  };
+
+  const updateTaskStatus = (taskId: string, status: string) => {
+    const allTasks = getTasks();
+    const task = allTasks.find(t => t.id === taskId);
+    if (task) {
+      const updatedTask = {
+        ...task,
+        status: status as TaskStatus,
+        updatedAt: new Date().toISOString()
+      };
+      saveTask(updatedTask);
       fetchProject();
-    } catch (error) {
-      console.error('Failed to remove member', error);
     }
   };
 
-  const updateTaskStatus = async (taskId: string, status: string) => {
-    try {
-      await api.patch(`/tasks/${taskId}/status`, { status });
-      fetchProject();
-    } catch (error) {
-      console.error('Failed to update task', error);
-    }
-  };
-
-  const deleteTask = async (taskId: string) => {
+  const deleteTask = (taskId: string) => {
     if (!window.confirm('Are you sure you want to delete this task?')) return;
-    try {
-      await api.delete(`/tasks/${taskId}`);
-      fetchProject();
-    } catch (error) {
-      console.error('Failed to delete task', error);
-    }
+    storageDeleteTask(taskId);
+    fetchProject();
   };
 
   if (loading) {

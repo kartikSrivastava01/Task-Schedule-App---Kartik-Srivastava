@@ -1,31 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import Layout from '../layouts/Layout.tsx';
-import api from '../api/axios.ts';
 import { useAuth } from '../context/AuthContext.tsx';
+import { getProjects, saveProject, deleteProject, getTasks, generateId } from '../utils/storage.ts';
+import { Project } from '../types.ts';
+import { EmptyState } from '../components/EmptyState.tsx';
+import { Badge } from '../components/Badge.tsx';
 import { 
   Plus, 
   Search, 
-  MoreVertical, 
   ExternalLink, 
   Trash2, 
   Calendar,
-  Users
+  Users,
+  CheckCircle2, 
+  X
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 
-interface Project {
-  id: string;
-  title: string;
-  description: string;
-  createdAt: string;
-  tasks: any[];
-  members: any[];
-  creator: { name: string };
-}
-
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const { user } = useAuth();
@@ -34,39 +28,51 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     fetchProjects();
-  }, []);
+  }, [user]);
 
-  const fetchProjects = async () => {
-    try {
-      const response = await api.get('/projects');
-      setProjects(response.data);
-    } catch (error) {
-      console.error('Failed to fetch projects', error);
-    } finally {
-      setLoading(false);
+  const fetchProjects = () => {
+    setLoading(true);
+    const allProjects = getProjects();
+    const allTasks = getTasks();
+
+    let filtered = allProjects;
+    if (user?.role === 'MEMBER') {
+      filtered = allProjects.filter(p => p.members.includes(user.id));
     }
+
+    const enhancedProjects = filtered.map(p => ({
+      ...p,
+      tasks: allTasks.filter(t => t.projectId === p.id)
+    }));
+
+    setProjects(enhancedProjects);
+    setLoading(false);
   };
 
-  const handleCreateProject = async (e: React.FormEvent) => {
+  const handleCreateProject = (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      await api.post('/projects', newProject);
-      setShowCreateModal(false);
-      setNewProject({ title: '', description: '' });
-      fetchProjects();
-    } catch (error) {
-      console.error('Failed to create project', error);
-    }
+    if (!user) return;
+    
+    const project: Project = {
+      id: generateId(),
+      title: newProject.title,
+      description: newProject.description,
+      createdBy: user.id,
+      members: [user.id], // Start with just the creator
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    saveProject(project);
+    setShowCreateModal(false);
+    setNewProject({ title: '', description: '' });
+    fetchProjects();
   };
 
-  const handleDeleteProject = async (id: string) => {
+  const handleDeleteProject = (id: string) => {
     if (!window.confirm('Are you sure you want to delete this project? All associated tasks will be removed.')) return;
-    try {
-      await api.delete(`/projects/${id}`);
-      fetchProjects();
-    } catch (error) {
-      console.error('Failed to delete project', error);
-    }
+    deleteProject(id);
+    fetchProjects();
   };
 
   const filteredProjects = projects.filter(p => 
@@ -181,12 +187,7 @@ export default function ProjectsPage() {
               );
             })
           ) : (
-            <div className="col-span-full py-32 text-center glass-card rounded-[3rem] bg-white/20">
-               <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <Search className="w-8 h-8 text-slate-300" />
-               </div>
-              <p className="text-slate-500 font-bold tracking-tight">No intelligence found matching these criteria.</p>
-            </div>
+            <EmptyState message="No intelligence found matching these criteria." />
           )}
         </div>
 

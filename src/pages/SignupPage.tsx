@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.tsx';
-import api from '../api/axios.ts';
+import { findUserByEmail, saveUser, generateId } from '../utils/storage.ts';
 import { User as UserIcon, Lock, Mail, Loader2, ShieldPlus, Briefcase } from 'lucide-react';
 
 export default function SignupPage() {
@@ -18,15 +18,31 @@ export default function SignupPage() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    try {
-      const response = await api.post('/auth/signup', { name, email, password, role });
-      login(response.data.token, response.data.user);
+    
+    // Simulate network delay
+    setTimeout(() => {
+      const existingUser = findUserByEmail(email);
+      if (existingUser) {
+        setError('Email already registered');
+        setLoading(false);
+        return;
+      }
+
+      const newUser = {
+        id: generateId(),
+        name,
+        email,
+        password,
+        role: role as 'ADMIN' | 'MEMBER',
+        createdAt: new Date().toISOString()
+      };
+
+      saveUser(newUser);
+      const { password: _, ...userWithoutPassword } = newUser;
+      login(userWithoutPassword);
       navigate('/');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to signup');
-    } finally {
       setLoading(false);
-    }
+    }, 800);
   };
 
   return (
